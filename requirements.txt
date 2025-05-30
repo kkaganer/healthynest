@@ -1,0 +1,22 @@
+# Core LangChain and LangGraph Libraries
+langchain>=0.1.0
+langgraph>=0.0.30
+
+# LLM Integration (Choose one or more as needed)
+langchain-openai  # For OpenAI models (GPT-3.5, GPT-4, etc.)
+langchain-google-genai # Uncomment if using Google Gemini models
+# langchain-anthropic # Uncomment if using Anthropic Claude models
+
+# External API / DB Clients
+supabase          # For interacting with your Supabase database
+requests          # A common library for making HTTP requests (like to Spoonacular)
+# httpx             # An alternative async-capable HTTP client
+
+# Utilities
+python-dotenv     # For managing environment variables (API keys, etc.) from a .env file
+pydantic>=2.0 
+supabase     # For Supabase client library
+# Checkpointing / Persistence (Optional but often useful)
+# pysqlite3-binary  # Can help avoid issues with built-in sqlite on some systems
+
+# Add any other specific libraries your project requires below
