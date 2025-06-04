@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Logs and test files
+*.log
+output.txt
+test_*.py
+*_test.py
+test_results.json
+*_log*.json
+simple_*.py
+comprehensive_*.py
+demonstration_*.py
+
+# Documentation
+*.md
+task.md
+
+# Development files
+.env.example
+repomix-output.xml
+tables.sql
+test_user_ids.txt
+
+# Cache directories
+.pytest_cache/
+.coverage
