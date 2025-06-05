@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Dict, Any
 import os
-from healthynest_plannetv2 import start_new_meal_plan, resume_meal_plan_workflow, get_workflow_status
+from healthynest_plannerv2 import start_new_meal_plan, resume_meal_plan_workflow, get_workflow_status
 
 # Security setup
 security = HTTPBearer()
@@ -75,7 +75,6 @@ async def root():
     }
 
 @app.get("/healthz")
-@app.get("/healthz/", include_in_schema=False)
 async def health_check():
     """
     Health check endpoint for Cloud Run and monitoring systems.

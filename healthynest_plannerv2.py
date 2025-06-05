@@ -861,18 +861,29 @@ def llm_intelligent_recipe_selection_node(state: HealthyNestState) -> Dict:
 
 
 def store_draft_plan_item_node(state: HealthyNestState) -> Dict:
-    # (Implementation from previous version - assumed correct)
+    # Fixed to ensure attendee_profiles are properly stored
     print("--- Node: Store Draft Plan Item ---")
     current_index, default_choice, all_candidates, current_slot, agg_needs, attendee_profiles, draft_plan = state.get("current_slot_index",0), state.get("default_choice_for_slot"), state.get("candidate_recipes_for_slot",[]), state.get("current_meal_slot"), state.get("aggregated_needs_for_slot"), state.get("current_slot_attendee_profiles",[]), state.get("draft_plan_items",[]).copy()
-    if current_slot and default_choice: 
+    
+    # DIAGNOSTIC LOG: Check if attendee_profiles are present
+    print(f"   🔍 DIAGNOSTIC: attendee_profiles present={attendee_profiles is not None}, count={len(attendee_profiles) if attendee_profiles else 0}")
+    if attendee_profiles:
+        for i, profile in enumerate(attendee_profiles):
+            print(f"   🔍 DIAGNOSTIC: Profile {i+1}: user_id={profile.get('id')}, name={profile.get('user_name')}")
+    
+    if current_slot and default_choice:
         default_info: CandidateRecipeInfo = {
             "id": default_choice.get("id"), "name": default_choice.get("name"),
-            "spoonacular_id": default_choice.get("spoonacular_id"), "image_url": default_choice.get("image_url") 
+            "spoonacular_id": default_choice.get("spoonacular_id"), "image_url": default_choice.get("image_url")
         }
         candidates_info = [{"id":c.get("id"), "name":c.get("name"), "spoonacular_id":c.get("spoonacular_id"), "image_url":c.get("image_url")} for c in all_candidates]
         
-        draft_item: DraftMealPlanSlotItem = {"day":current_slot["day"], "meal_type":current_slot["meal_type"], "actual_date":current_slot["actual_date"], "attendees":current_slot["attendees"], "default_selected_recipe":default_info, "all_candidate_recipes":candidates_info, "aggregated_needs":agg_needs, "attendee_profiles":attendee_profiles}
-        draft_plan.append(draft_item); print(f"   Added to draft: {default_info.get('name')}")
+        # FIX: Ensure attendee_profiles is properly set (not None or empty)
+        validated_attendee_profiles = attendee_profiles if attendee_profiles else []
+        print(f"   🔍 DIAGNOSTIC: Storing draft item with {len(validated_attendee_profiles)} attendee profiles")
+        
+        draft_item: DraftMealPlanSlotItem = {"day":current_slot["day"], "meal_type":current_slot["meal_type"], "actual_date":current_slot["actual_date"], "attendees":current_slot["attendees"], "default_selected_recipe":default_info, "all_candidate_recipes":candidates_info, "aggregated_needs":agg_needs, "attendee_profiles":validated_attendee_profiles}
+        draft_plan.append(draft_item); print(f"   Added to draft: {default_info.get('name')} with {len(validated_attendee_profiles)} profiles")
     else: print(f"   ERROR: No current_slot/default_choice to store. Index: {current_index}")
     return {"current_slot_index": current_index + 1, "draft_plan_items": draft_plan, "default_choice_for_slot": None, "candidate_recipes_for_slot": [], "aggregated_needs_for_slot": None, "current_slot_attendee_profiles": None}
 
@@ -904,7 +915,12 @@ def present_full_plan_for_review_node(state: HealthyNestState) -> Dict:
         def_recipe_sum = s_item["default_selected_recipe"]
         def_details = details_map.get(def_recipe_sum["id"]) if def_recipe_sum and def_recipe_sum.get("id") else None
         alts_ui = [{"id":a.get("id"), "name":a.get("name"), "spoonacular_id":a.get("spoonacular_id"), "image_url": details_map.get(a["id"], {}).get("image_url") if a and a.get("id") else "https://via.placeholder.com/150"} for a in s_item.get("all_candidate_recipes", [])]
-        ui_item: MealPlanItemForUI = {"day":s_item["day"], "meal_type":s_item["meal_type"], "actual_date":s_item["actual_date"], "attendees":s_item["attendees"], "recipe_id":def_recipe_sum.get("id"), "recipe_name":def_recipe_sum.get("name"), "spoonacular_id":def_recipe_sum.get("spoonacular_id"), "image_url":def_details.get("image_url") if def_details else "https://via.placeholder.com/150", "fat_grams_portion":def_details.get("fat_grams_portion") if def_details else None, "carb_grams_portion":def_details.get("carb_grams_portion") if def_details else None, "protein_grams_portion":def_details.get("protein_grams_portion") if def_details else None, "calories_kcal":def_details.get("calories_kcal") if def_details else None, "alternative_recipes":alts_ui, "aggregated_needs":s_item.get("aggregated_needs"), "attendee_profiles":s_item.get("attendee_profiles", [])}
+        
+        # FIX: Ensure attendee_profiles are properly passed through to UI items
+        attendee_profiles_for_ui = s_item.get("attendee_profiles", [])
+        print(f"   🔍 DIAGNOSTIC: UI item {s_item['day']} {s_item['meal_type']} has {len(attendee_profiles_for_ui)} attendee profiles")
+        
+        ui_item: MealPlanItemForUI = {"day":s_item["day"], "meal_type":s_item["meal_type"], "actual_date":s_item["actual_date"], "attendees":s_item["attendees"], "recipe_id":def_recipe_sum.get("id"), "recipe_name":def_recipe_sum.get("name"), "spoonacular_id":def_recipe_sum.get("spoonacular_id"), "image_url":def_details.get("image_url") if def_details else "https://via.placeholder.com/150", "fat_grams_portion":def_details.get("fat_grams_portion") if def_details else None, "carb_grams_portion":def_details.get("carb_grams_portion") if def_details else None, "protein_grams_portion":def_details.get("protein_grams_portion") if def_details else None, "calories_kcal":def_details.get("calories_kcal") if def_details else None, "alternative_recipes":alts_ui, "aggregated_needs":s_item.get("aggregated_needs"), "attendee_profiles":attendee_profiles_for_ui}
         ui_plan.append(ui_item)
     
     print(f"   WORKFLOW PAUSED: Prepared {len(ui_plan)} items for user review and approval.")
@@ -985,23 +1001,34 @@ def prepare_modification_items_node(state: HealthyNestState) -> Dict:
     print("--- Node: Prepare Modification Items ---")
     confirmed_plan_items = state.get("hitl_data_for_ui", [])
     
+    # DIAGNOSTIC LOG: Check if we have plan items to process
+    print(f"   🔍 DIAGNOSTIC: Found {len(confirmed_plan_items) if confirmed_plan_items else 0} confirmed plan items")
+    
     items_to_modify = []
     for ui_item in confirmed_plan_items:
+        print(f"   🔍 DIAGNOSTIC: Processing item {ui_item.get('day')} {ui_item.get('meal_type')} with {len(ui_item.get('attendee_profiles', []))} attendees")
+        
         if not ui_item.get("recipe_id") or ui_item.get("recipe_id") == "placeholder_not_found":
             print(f"   Skipping {ui_item.get('day')} {ui_item.get('meal_type')} - no valid recipe.")
             continue  # Skip items without a valid recipe
 
+        # FIX: Ensure attendee information is preserved, include attendee names as backup
+        attendee_profiles = ui_item.get("attendee_profiles", [])
+        attendee_names = ui_item.get("attendees", [])
+        
         items_to_modify.append({
             "actual_date": ui_item.get("actual_date"),
             "meal_type": ui_item.get("meal_type"),
             "base_recipe_id": ui_item.get("recipe_id"),
             "base_recipe_name": ui_item.get("recipe_name"),
             "spoonacular_id": ui_item.get("spoonacular_id"),
-            "attendee_profiles": ui_item.get("attendee_profiles", []),
+            "attendee_profiles": attendee_profiles,
+            "attendees": attendee_names,  # Add attendee names as backup
             "aggregated_needs": ui_item.get("aggregated_needs"),
         })
     
     print(f"   Prepared {len(items_to_modify)} items for modification processing")
+    print(f"   🔍 DIAGNOSTIC: Modification loop will {'START' if items_to_modify else 'SKIP - NO ITEMS'}")
     
     return {
         "items_for_modification_loop": items_to_modify,
@@ -1030,10 +1057,13 @@ def select_next_item_for_modification_node(state: HealthyNestState) -> Dict:
         }
         
         # Prepare current_meal_plan_entry_for_modification structure
+        attendee_profiles_from_item = item_details.get("attendee_profiles", [])
+        print(f"   🔍 DIAGNOSTIC: Item has {len(attendee_profiles_from_item)} attendee profiles")
+        
         modification_context = {
             "base_recipe_id": item_details.get("base_recipe_id"),
             "base_recipe_name": item_details.get("base_recipe_name"),
-            "attendees_with_profiles": item_details.get("attendee_profiles", []),
+            "attendees_with_profiles": attendee_profiles_from_item,
             "slot_aggregated_needs": item_details.get("aggregated_needs")
         }
         
@@ -1241,7 +1271,11 @@ def populate_meal_plan_entry_participants_node(state: HealthyNestState) -> Dict:
     meal_plan_id = state.get("meal_plan_id")
     mpe_ctx_holder = state.get("current_meal_plan_entry_for_modification")
     
-    final_recipe_id_for_slot = state.get("contextual_recipe_id") 
+    # DIAGNOSTIC LOG: Check entry point data
+    print(f"   🔍 DIAGNOSTIC: meal_plan_id={meal_plan_id}")
+    print(f"   🔍 DIAGNOSTIC: mpe_ctx_holder present={mpe_ctx_holder is not None}")
+    
+    final_recipe_id_for_slot = state.get("contextual_recipe_id")
     suitability_notes_for_slot = state.get("contextual_recipe_suitability_notes", "Notes unavailable.")
     
     # Determine is_llm_modified based on the LLM output that led to the contextual_recipe_id
@@ -1252,29 +1286,37 @@ def populate_meal_plan_entry_participants_node(state: HealthyNestState) -> Dict:
     elif not final_recipe_id_for_slot : # If contextual_recipe_id failed to be created, assume original is used
         is_llm_modified_flag = False
 
-
-    if not mpe_ctx_holder or not meal_plan_id: return {"meal_plan_entry_participants_status": "failure_missing_context"}
+    if not mpe_ctx_holder or not meal_plan_id:
+        print("   🔍 DIAGNOSTIC: EARLY EXIT - Missing context or meal_plan_id")
+        return {"meal_plan_entry_participants_status": "failure_missing_context"}
     
     if not final_recipe_id_for_slot:
+        print("   🔍 DIAGNOSTIC: No contextual_recipe_id, attempting fallback")
         print("   ERROR: No contextual_recipe_id available to assign to participants. Attempting fallback to original recipe ID from modification_context.")
         mod_ctx_check = mpe_ctx_holder.get("modification_context")
         if mod_ctx_check:
-            final_recipe_id_for_slot = mod_ctx_check.get("base_recipe_id") 
-            is_llm_modified_flag = False 
+            final_recipe_id_for_slot = mod_ctx_check.get("base_recipe_id")
+            is_llm_modified_flag = False
             suitability_notes_for_slot = "Original recipe used due to error in processing/saving contextual/modified version."
-            print(f"   Falling back to original recipe ID (from Recipes table): {final_recipe_id_for_slot} for participants.")
+            print(f"   🔍 DIAGNOSTIC: Fallback recipe ID: {final_recipe_id_for_slot}")
             if not final_recipe_id_for_slot:
-                 print("   CRITICAL ERROR: No recipe ID (original from context or contextual) to assign to participants.")
+                 print("   🔍 DIAGNOSTIC: CRITICAL - No recipe ID available at all")
                  return {"meal_plan_entry_participants_status": "failure_no_recipe_id_at_all"}
         else:
-            print("   CRITICAL ERROR: No modification context to find fallback recipe ID.")
+            print("   🔍 DIAGNOSTIC: CRITICAL - No modification context for fallback")
             return {"meal_plan_entry_participants_status": "failure_no_mod_context_for_fallback"}
 
-
     meal_date, meal_type, mod_ctx = mpe_ctx_holder.get("actual_date"), mpe_ctx_holder.get("meal_type"), mpe_ctx_holder.get("modification_context")
-    if not all([meal_date, meal_type, mod_ctx]): return {"meal_plan_entry_participants_status": "failure_missing_mpe_data"}
+    print(f"   🔍 DIAGNOSTIC: meal_date={meal_date}, meal_type={meal_type}, mod_ctx present={mod_ctx is not None}")
+    
+    if not all([meal_date, meal_type, mod_ctx]):
+        print("   🔍 DIAGNOSTIC: EARLY EXIT - Missing meal plan entry data")
+        return {"meal_plan_entry_participants_status": "failure_missing_mpe_data"}
 
     attendees_profiles = mod_ctx.get("attendees_with_profiles", [])
+    print(f"   🔍 DIAGNOSTIC: Found {len(attendees_profiles)} attendee profiles")
+    for i, profile in enumerate(attendees_profiles):
+        print(f"   🔍 DIAGNOSTIC: Attendee {i+1}: user_id={profile.get('id')}, name={profile.get('user_name')}")
     
     # Always increment the modification index, regardless of whether there are attendees
     # This prevents infinite loops when there are no attendees to process
@@ -1290,35 +1332,77 @@ def populate_meal_plan_entry_participants_node(state: HealthyNestState) -> Dict:
             "current_modification_item_index": next_index,
             "all_modifications_completed": all_completed,
             "workflow_status": "completed" if all_completed else "running_modifications",
-            "contextual_recipe_id": None, "contextual_recipe_suitability_notes": None, 
+            "contextual_recipe_id": None, "contextual_recipe_suitability_notes": None,
             "llm_modification_suggestions": None, "live_recipe_details_for_modification": None,
             "error_message": None
         }
     
+    # FIX: If no attendee profiles, try to get them from attendee names in the slot
     if not attendees_profiles:
-        print("   INFO: No attendees found for this meal slot, skipping participant creation but continuing loop.")
+        print("   🔍 DIAGNOSTIC: No attendee profiles found, attempting to fetch from attendee names")
+        current_slot_details = state.get("current_item_modification_details", {})
+        attendee_names_from_slot = []
+        
+        # Try to get attendees from multiple sources
+        if current_slot_details:
+            # From current item details - try both attendees and attendee_profiles
+            if hasattr(current_slot_details, 'get') or isinstance(current_slot_details, dict):
+                attendees_from_item = current_slot_details.get("attendees", [])
+                if attendees_from_item:
+                    attendee_names_from_slot = attendees_from_item
+                    print(f"   🔍 DIAGNOSTIC: Found attendees from current item: {attendee_names_from_slot}")
+        
+        # Fallback: Try to extract from meal_plan_entry context
+        if not attendee_names_from_slot and mpe_ctx_holder:
+            # Check if there's any attendee information in the modification context
+            print("   🔍 DIAGNOSTIC: Trying to extract attendees from meal plan entry context")
+        
+        if attendee_names_from_slot:
+            print(f"   🔍 DIAGNOSTIC: Attempting to fetch profiles for attendee names: {attendee_names_from_slot}")
+            try:
+                # Fetch user profiles by names
+                fetched_profiles = db_client.get_user_profiles_by_names(attendee_names_from_slot)
+                if fetched_profiles:
+                    attendees_profiles = fetched_profiles
+                    print(f"   🔍 DIAGNOSTIC: Successfully fetched {len(attendees_profiles)} profiles as fallback")
+                    for i, profile in enumerate(attendees_profiles):
+                        print(f"   🔍 DIAGNOSTIC: Fetched Profile {i+1}: user_id={profile.get('id')}, name={profile.get('user_name')}")
+                else:
+                    print("   🔍 DIAGNOSTIC: No profiles returned from database query")
+            except Exception as e:
+                print(f"   🔍 DIAGNOSTIC: Error fetching profiles by names: {e}")
+    
+    if not attendees_profiles:
+        print("   🔍 DIAGNOSTIC: EARLY EXIT - No attendees found after fallback attempts, skipping participant creation")
         return create_return_dict("no_attendees_skipped")
 
+    # CRITICAL DATABASE QUERY - This is where the bug likely occurs
     mpe_db_id = None
-    try: 
+    print(f"   🔍 DIAGNOSTIC: Querying MealPlanEntries for meal_plan_id={meal_plan_id}, meal_date={meal_date}, meal_type={meal_type}")
+    try:
         entry_resp = db_client.client.table("MealPlanEntries").select("id").eq("meal_plan_id", meal_plan_id).eq("meal_date", meal_date).eq("meal_type", meal_type).limit(1).single().execute()
-        if hasattr(entry_resp, 'data') and entry_resp.data: mpe_db_id = entry_resp.data.get("id")
-        if not mpe_db_id: 
-            print(f"   ERROR: MPE ID not found for {meal_plan_id}, {meal_date}, {meal_type}")
+        print(f"   🔍 DIAGNOSTIC: Query response: {entry_resp}")
+        if hasattr(entry_resp, 'data') and entry_resp.data:
+            mpe_db_id = entry_resp.data.get("id")
+            print(f"   🔍 DIAGNOSTIC: Successfully found MPE ID: {mpe_db_id}")
+        if not mpe_db_id:
+            print(f"   🔍 DIAGNOSTIC: QUERY FAILED - MPE ID not found for {meal_plan_id}, {meal_date}, {meal_type}")
             return create_return_dict("failure_mpe_not_found")
-        print(f"   Found MPE ID: {mpe_db_id}")
-    except Exception as e: 
-        print(f"   ERROR querying MPE ID: {e}")
+    except Exception as e:
+        print(f"   🔍 DIAGNOSTIC: QUERY EXCEPTION - Error querying MPE ID: {e}")
         return create_return_dict("failure_query_mpe_id")
 
     participant_entries = []
     for profile in attendees_profiles:
         user_id = profile.get("id")
-        if not user_id: continue
+        if not user_id:
+            print(f"   🔍 DIAGNOSTIC: Skipping profile without user_id: {profile}")
+            continue
         
         # According to schema, assigned_recipe_id must reference Recipes table, not MealPlanRecipes
         # We need to use the original recipe ID from the Recipes table
         original_recipe_id = mod_ctx.get("base_recipe_id")  # This is from Recipes table
+        print(f"   🔍 DIAGNOSTIC: Creating participant entry for user_id={user_id}, recipe_id={original_recipe_id}")
         
         participant_entries.append({
             "meal_plan_entry_id": mpe_db_id, "user_id": user_id,
@@ -1327,11 +1411,15 @@ def populate_meal_plan_entry_participants_node(state: HealthyNestState) -> Dict:
             "participant_specific_notes": suitability_notes_for_slot
         })
     
+    print(f"   🔍 DIAGNOSTIC: Prepared {len(participant_entries)} participant entries for database insertion")
+    
     if not participant_entries:
-        print("   INFO: No valid participant entries to save, continuing loop.")
+        print("   🔍 DIAGNOSTIC: EARLY EXIT - No valid participant entries to save")
         return create_return_dict("no_participants_to_save")
     
+    print(f"   🔍 DIAGNOSTIC: Calling db_client.save_meal_plan_entry_participants with {len(participant_entries)} entries")
     save_ok = db_client.save_meal_plan_entry_participants(participant_entries)
+    print(f"   🔍 DIAGNOSTIC: Database save result: {save_ok}")
     
     # Return with incremented index and completion status
     return create_return_dict("success" if save_ok else "failure_db_save")
@@ -1348,12 +1436,16 @@ def should_continue_modifications(state: HealthyNestState) -> str:
     Returns next node based on modification completion status.
     """
     all_completed = state.get("all_modifications_completed", False)
+    current_index = state.get("current_modification_item_index", 0)
+    items_list = state.get("items_for_modification_loop", [])
+    
+    print(f"   🔍 DIAGNOSTIC: Modification loop control - all_completed={all_completed}, current_index={current_index}, total_items={len(items_list) if items_list else 0}")
     
     if all_completed:
-        print("   All modifications completed, workflow ending.")
+        print("   🔍 DIAGNOSTIC: MODIFICATION LOOP ENDING - All modifications completed")
         return "END"
     else:
-        print("   Continuing modification loop.")
+        print("   🔍 DIAGNOSTIC: MODIFICATION LOOP CONTINUING - More items to process")
         return "select_next_item_for_modification_node"
 
 def should_interrupt_for_hitl(state: HealthyNestState) -> bool:
