@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Dict, Any
@@ -23,12 +24,32 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security
     return credentials.credentials
 
 app = FastAPI(
-    title="HealthyNest Meal Planner API", 
+    title="HealthyNest Meal Planner API",
     version="1.0.0",
     description="A Human-in-the-Loop (HITL) meal planning service using LangGraph workflows",
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# --- START OF CORS CONFIGURATION ---
+# List of origins that are allowed to make requests to your API.
+# We've added your local development server.
+# When you deploy your frontend, you MUST add its URL here as well.
+origins = [
+    # "http://localhost:5173",  # React development server
+    # "https://your-production-frontend-url.com", # Add your production URL here later
+    "*"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Allows specific origins
+    allow_credentials=True,  # Allows cookies and authorization headers
+    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers (including Content-Type and Authorization)
+)
+# --- END OF CORS CONFIGURATION ---
+
 
 # Pydantic models for request bodies
 class StartPlanRequest(BaseModel):
@@ -61,7 +82,7 @@ async def root():
         },
         "endpoints": {
             "start_plan": "POST /start_plan - Start a new meal planning workflow (requires auth)",
-            "resume_plan": "POST /resume_plan - Resume a paused workflow with user input (requires auth)", 
+            "resume_plan": "POST /resume_plan - Resume a paused workflow with user input (requires auth)",
             "workflow_status": "POST /workflow_status - Check workflow status (requires auth)",
             "health": "GET /healthz - Health check (public)",
             "docs": "GET /docs - Interactive API documentation (public)",
